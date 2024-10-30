@@ -21,32 +21,41 @@ def initialize_pose(detection_confidence=0.7, tracking_confidence=0.7, enable_se
         min_tracking_confidence=tracking_confidence
     )
 
-def provide_initial_instructions(exercise_type):
+def provide_initial_instructions(frame, exercise_type):
     """
     Exibe instruções iniciais para o usuário com base no tipo de exercício.
     """
     if exercise_type == "shoulder_press":
-        print("Instruções para o exercício Desenvolvimento de Ombro:")
-        print("Posicione os pesos na altura dos ombros, mantenha o tronco ereto e pés firmes no chão.")
-        print("Evite inclinar o corpo para frente ou para os lados durante o movimento.")
-    else:
-        print("Instruções para o exercício não estão disponíveis.")
+        instructions = [
+            "Instruções para o exercício Desenvolvimento de Ombro:",
+            "Posicione os pesos na altura dos ombros, mantenha o tronco ereto e os pés firmes no chão.",
+            "Evite inclinar o corpo para frente ou para os lados durante o movimento."
+        ]
+        y_offset = 50
+        for instruction in instructions:
+            cv2.putText(frame, instruction, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.25, (255, 0, 0), 1, cv2.LINE_AA)
+            y_offset += 30
 
-def process_exercise(exercise_type, landmarks):
+def process_exercise(exercise_type, landmarks, frame_width, frame_height, prev_angles, prev_time):
     """
-    Seleciona e executa a função de análise de exercício com base no tipo de exercício.
+    Executa a função de análise do exercício e retorna o feedback e dados de análise.
     """
-    analysis_function = globals().get(f"analyze_{exercise_type}")
-    if analysis_function:
-        result = analysis_function(landmarks)
-        if isinstance(result, tuple) and len(result) == 4:
-            return result  # feedback, elbow_angle, shoulder_angle, torso_angle
-        else:
-            # Caso a função retorne apenas o feedback, preenche os ângulos com None
-            return result, None, None, None
+    if exercise_type == "shoulder_press":
+        return analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles, prev_time)
     else:
-        return "Exercise not supported.", None, None, None
-
+        # Retorna um dicionário padrão caso o exercício não seja suportado
+        return {
+            "feedback": "Exercise not supported.",
+            "phase": "N/A",
+            "elbow_angle": 0,
+            "shoulder_angle": 0,
+            "torso_angle": 0,
+            "symmetry": False,
+            "stability": False,
+            "angular_velocity": 0,
+            "shoulder_elbow_distance": 0,
+            "time": prev_time
+        }
 
 def get_log_file_path(exercise_type):
     """
@@ -64,16 +73,18 @@ def get_log_file_path(exercise_type):
     log_file_path = os.path.join(exercise_folder, f"{date_str}.txt")
     return log_file_path
 
-def log_feedback(feedback, exercise_type, elbow_angle=None, shoulder_angle=None, torso_angle=None):
+def log_feedback(result, exercise_type):
     """
     Salva o feedback em um arquivo de log específico para o exercício e a data, incluindo detalhes de ângulos.
     """
     log_file_path = get_log_file_path(exercise_type)
     with open(log_file_path, "a") as f:
         timestamp = datetime.now().strftime("%H:%M:%S")
-        f.write(f"[{timestamp}] Feedback: {feedback}\n")
-        if elbow_angle is not None and shoulder_angle is not None and torso_angle is not None:
-            f.write(f"   Ângulos - Cotovelo: {elbow_angle:.2f}, Ombro: {shoulder_angle:.2f}, Tronco: {torso_angle:.2f}\n")
+        f.write(f"[{timestamp}] Feedback: {result['feedback']}\n")
+        f.write(f"   Fase: {result['phase']}\n")
+        f.write(f"   Ângulos - Cotovelo: {result['elbow_angle']:.2f}, Ombro: {result['shoulder_angle']:.2f}, Tronco: {result['torso_angle']:.2f}\n")
+        f.write(f"   Simetria: {result['symmetry']}, Estabilidade: {result['stability']}\n")
+        f.write(f"   Velocidade Angular: {result['angular_velocity']:.2f}\n")
 
 def capture_video(pose, exercise_type, feedback_interval=1.0):
     """
@@ -82,6 +93,16 @@ def capture_video(pose, exercise_type, feedback_interval=1.0):
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         raise RuntimeError("Não foi possível acessar a câmera. Verifique a conexão.")
+
+    # Define resolução para reduzir o "zoom" e obter uma melhor visão do exercício
+    desired_width = 640
+    desired_height = 480
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, desired_width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
+
+    # Define a janela para tela cheia
+    cv2.namedWindow('FitMotion - Pose Detection with Segmentation', cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty('FitMotion - Pose Detection with Segmentation', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     mp_drawing = mp.solutions.drawing_utils
     last_feedback_time = time.time()
@@ -98,6 +119,10 @@ def capture_video(pose, exercise_type, feedback_interval=1.0):
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             result = pose.process(frame_rgb)
+            
+            # Exibe as instruções iniciais em azul na tela
+            provide_initial_instructions(frame, exercise_type)
+            
             if result.pose_landmarks:
                 # Desenha a pose detectada
                 mp_drawing.draw_landmarks(frame, result.pose_landmarks, mp_pose.POSE_CONNECTIONS)
@@ -110,29 +135,42 @@ def capture_video(pose, exercise_type, feedback_interval=1.0):
                 # Controle de feedback com base em mudanças nos ângulos
                 current_time = time.time()
                 if current_time - last_feedback_time >= feedback_interval:
-                    feedback, elbow_angle, shoulder_angle, torso_angle = process_exercise(exercise_type, result.pose_landmarks)
+                    landmarks = result.pose_landmarks
+                    frame_width, frame_height = frame.shape[1], frame.shape[0]
+
+                    # Processa o exercício e obtém os dados de análise
+                    result = process_exercise(
+                        exercise_type,
+                        landmarks,
+                        frame_width,
+                        frame_height,
+                        prev_angles=previous_angles if previous_angles else {},
+                        prev_time=last_feedback_time
+                    )
+
+                    # Verifica se houve uma mudança significativa nos ângulos para fornecer novo feedback
+                    if previous_angles is None or \
+                       abs(result['elbow_angle'] - previous_angles.get("elbow_angle", result['elbow_angle'])) > 5 or \
+                       abs(result['shoulder_angle'] - previous_angles.get("shoulder_angle", result['shoulder_angle'])) > 5 or \
+                       abs(result['torso_angle'] - previous_angles.get("torso_angle", result['torso_angle'])) > 5:
+                        
+                        print(result["feedback"])
+                        log_feedback(result, exercise_type)
+                        previous_angles = {
+                            "elbow_angle": result['elbow_angle'],
+                            "shoulder_angle": result['shoulder_angle'],
+                            "torso_angle": result['torso_angle']
+                        }
+                        last_feedback_time = current_time
                     
-                    # Verifica se os ângulos foram retornados corretamente
-                    if elbow_angle is not None and shoulder_angle is not None and torso_angle is not None:
-                        # Verifica se houve uma mudança significativa nos ângulos para fornecer novo feedback
-                        if previous_angles is None or \
-                           abs(elbow_angle - previous_angles[0]) > 5 or \
-                           abs(shoulder_angle - previous_angles[1]) > 5 or \
-                           abs(torso_angle - previous_angles[2]) > 5:
-                            
-                            print(feedback)
-                            log_feedback(feedback, exercise_type, elbow_angle, shoulder_angle, torso_angle)
-                            previous_angles = (elbow_angle, shoulder_angle, torso_angle)
-                            last_feedback_time = current_time
-                    
-                    # Adiciona o feedback diretamente no frame do vídeo
-                    cv2.putText(frame, feedback, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                    # Adiciona o feedback de correção diretamente no frame do vídeo em vermelho
+                    cv2.putText(frame, result["feedback"], (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
             # Calcula e exibe a taxa de quadros (FPS)
             frame_count += 1
             elapsed_time = time.time() - start_time
             fps = frame_count / elapsed_time if elapsed_time > 0 else 0
-            cv2.putText(frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 1, cv2.LINE_AA)
 
             cv2.imshow('FitMotion - Pose Detection with Segmentation', frame)
             if cv2.waitKey(10) & 0xFF == ord('q'):
@@ -142,14 +180,10 @@ def capture_video(pose, exercise_type, feedback_interval=1.0):
         cap.release()
         cv2.destroyAllWindows()
 
-
 def run_exercise_analysis(exercise_type="shoulder_press", detection_confidence=0.7, tracking_confidence=0.7, feedback_interval=1.0, enable_segmentation=True, model_complexity=1):
     """
     Função de orquestração que inicializa o modelo, configura os parâmetros e inicia a captura de vídeo.
     """
-    # Fornece instruções iniciais para o exercício
-    provide_initial_instructions(exercise_type)
-
     # Inicializa o modelo de pose com os parâmetros fornecidos
     pose = initialize_pose(
         detection_confidence=detection_confidence,

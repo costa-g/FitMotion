@@ -1,12 +1,103 @@
 import math
+import time
 
-def calculate_angle(point1, point2, point3):
+def normalize_coordinates(point, frame_width, frame_height):
+    """
+    Normaliza as coordenadas de um ponto com base na largura e altura do frame.
+    """
+    return point.x * frame_width, point.y * frame_height
+
+def calculate_angle(point1, point2, point3, frame_width=None, frame_height=None):
     """
     Calcula o ângulo entre três pontos (ex: ombro, cotovelo, pulso).
+    Normaliza as coordenadas se frame_width e frame_height forem fornecidos.
     """
-    x1, y1 = point1.x, point1.y
-    x2, y2 = point2.x, point2.y
-    x3, y3 = point3.x, point3.y
+    if frame_width and frame_height:
+        x1, y1 = normalize_coordinates(point1, frame_width, frame_height)
+        x2, y2 = normalize_coordinates(point2, frame_width, frame_height)
+        x3, y3 = normalize_coordinates(point3, frame_width, frame_height)
+    else:
+        x1, y1 = point1.x, point1.y
+        x2, y2 = point2.x, point2.y
+        x3, y3 = point3.x, point3.y
 
     angle = math.degrees(math.atan2(y3 - y2, x3 - x2) - math.atan2(y1 - y2, x1 - x2))
     return abs(angle)
+
+def calculate_distance(point1, point2, frame_width=None, frame_height=None):
+    """
+    Calcula a distância entre dois pontos. Se frame_width e frame_height forem fornecidos, 
+    normaliza as coordenadas antes de calcular a distância.
+    """
+    if frame_width and frame_height:
+        x1, y1 = normalize_coordinates(point1, frame_width, frame_height)
+        x2, y2 = normalize_coordinates(point2, frame_width, frame_height)
+    else:
+        x1, y1 = point1.x, point1.y
+        x2, y2 = point2.x, point2.y
+
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+def check_symmetry(left_point, right_point, frame_width=None, frame_height=None, tolerance=0.05):
+    """
+    Verifica se dois pontos (esquerdo e direito) estão simétricos em relação ao eixo vertical.
+    A tolerância define o limite de diferença aceitável entre as posições x dos pontos.
+    """
+    if frame_width and frame_height:
+        left_x, _ = normalize_coordinates(left_point, frame_width, frame_height)
+        right_x, _ = normalize_coordinates(right_point, frame_width, frame_height)
+    else:
+        left_x, right_x = left_point.x, right_point.x
+
+    return abs(left_x - right_x) <= tolerance * frame_width
+
+def check_stability(torso_angle, lower_bound=80, upper_bound=100):
+    """
+    Verifica se o ângulo do tronco está dentro dos limites aceitáveis (posição reta).
+    """
+    return lower_bound <= torso_angle <= upper_bound
+
+def calculate_angular_velocity(angle1, angle2, time_elapsed):
+    """
+    Calcula a velocidade angular entre dois ângulos em um intervalo de tempo.
+    """
+    if time_elapsed > 0:
+        return abs(angle2 - angle1) / time_elapsed
+    return 0
+
+def is_within_amplitude(angle, min_angle, max_angle):
+    """
+    Verifica se o ângulo está dentro da amplitude de movimento esperada.
+    """
+    return min_angle <= angle <= max_angle
+
+def analyze_posture(landmarks, frame_width, frame_height, prev_angles=None, prev_time=None):
+    """
+    Realiza uma análise detalhada da postura, incluindo ângulos, simetria, estabilidade, e velocidade angular.
+    """
+    # Exemplo de cálculo de ângulos e distâncias
+    shoulder_angle = calculate_angle(landmarks['left_hip'], landmarks['left_shoulder'], landmarks['left_elbow'], frame_width, frame_height)
+    elbow_angle = calculate_angle(landmarks['left_shoulder'], landmarks['left_elbow'], landmarks['left_wrist'], frame_width, frame_height)
+    torso_angle = calculate_angle(landmarks['left_hip'], landmarks['left_shoulder'], landmarks['right_hip'], frame_width, frame_height)
+
+    # Verificação de simetria
+    symmetrical = check_symmetry(landmarks['left_shoulder'], landmarks['right_shoulder'], frame_width, frame_height)
+
+    # Verificação de estabilidade do tronco
+    stable = check_stability(torso_angle)
+
+    # Cálculo de velocidade angular
+    current_time = time.time()
+    time_elapsed = current_time - prev_time if prev_time else 0
+    angular_velocity = calculate_angular_velocity(prev_angles.get('elbow_angle', elbow_angle), elbow_angle, time_elapsed)
+
+    # Resultados de análise
+    return {
+        "shoulder_angle": shoulder_angle,
+        "elbow_angle": elbow_angle,
+        "torso_angle": torso_angle,
+        "symmetry": symmetrical,
+        "stability": stable,
+        "angular_velocity": angular_velocity,
+        "time": current_time
+    }
