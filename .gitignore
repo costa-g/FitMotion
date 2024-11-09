@@ -1,6 +1,14 @@
+# Remove
+api_server_bkp/
+mobile_app/
+ai_model/
+
 # Ambiente virtual
 .venv/
 venv/
+
+# Arquivos do aplicativo
+mobile_app/node_modules/
 
 # Arquivos de cache do Python
 __pycache__/
@@ -58,3 +66,4 @@ coverage.xml
 .cache/
 .pyre/
 .mypy_cache/
+node_modules
