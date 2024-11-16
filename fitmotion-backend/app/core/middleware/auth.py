@@ -1,13 +1,11 @@
 from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.services.auth_service import AuthService
-from firebase_admin import auth
 from typing import Optional
+from firebase_admin import auth
 
 class FirebaseAuth(HTTPBearer):
     def __init__(self, auto_error: bool = True):
         super(FirebaseAuth, self).__init__(auto_error=auto_error)
-        self.auth_service = AuthService()
 
     async def __call__(self, request: Request) -> Optional[HTTPAuthorizationCredentials]:
         credentials: HTTPAuthorizationCredentials = await super().__call__(request)
@@ -19,9 +17,9 @@ class FirebaseAuth(HTTPBearer):
             )
 
         try:
-            decoded_token = await self.auth_service.verify_token(credentials.credentials)
+            decoded_token = auth.verify_id_token(credentials.credentials)
             request.state.user = decoded_token
-            return credentials.credentials
+            return decoded_token
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

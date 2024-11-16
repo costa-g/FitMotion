@@ -1,6 +1,14 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
+class FirebaseAuthResponse(BaseModel):
+    idToken: str
+    email: str
+    refreshToken: str
+    expiresIn: str
+    localId: str
+    registered: Optional[bool] = None
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
@@ -10,16 +18,12 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user_id: str
-
 class UserResponse(BaseModel):
-    id: str
+    uid: str
     email: EmailStr
-    full_name: str
-    photo_url: Optional[str] = None
+    displayName: Optional[str] = None
+    photoURL: Optional[str] = None
+    emailVerified: bool
 
 class PasswordReset(BaseModel):
     email: EmailStr

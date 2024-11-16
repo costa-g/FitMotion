@@ -2,10 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config.settings import settings
 from app.core.config.firebase import initialize_firebase
-from app.api.v1 import auth
+from app.api.v1 import auth, exercises, workouts
 
 def create_application() -> FastAPI:
-    # Initialize Firebase first
     initialize_firebase()
     
     application = FastAPI(
@@ -26,6 +25,14 @@ def create_application() -> FastAPI:
     # Include routers
     application.include_router(
         auth.router,
+        prefix=settings.API_V1_STR
+    )
+    application.include_router(
+        exercises.router,
+        prefix=settings.API_V1_STR
+    )
+    application.include_router(
+        workouts.router,
         prefix=settings.API_V1_STR
     )
 

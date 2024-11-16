@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
 
 class Settings(BaseSettings):
     # API Settings
@@ -11,6 +10,9 @@ class Settings(BaseSettings):
 
     # Firebase
     FIREBASE_CREDENTIALS_PATH: str
+    FIREBASE_API_KEY: str
+    FIREBASE_AUTH_DOMAIN: str
+    FIREBASE_PROJECT_ID: str
 
     # Server
     HOST: str = "0.0.0.0"

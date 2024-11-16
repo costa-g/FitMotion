@@ -1,44 +1,79 @@
 from firebase_admin import auth
 from fastapi import HTTPException, status
-from app.schemas.auth import UserCreate, UserLogin
+from app.schemas.auth import UserCreate, UserLogin, FirebaseAuthResponse
 from app.services.firebase_service import FirebaseService
-import asyncio
+import httpx
+from app.core.config.settings import settings
 
 class AuthService:
     def __init__(self):
         self.firebase = FirebaseService()
+        self.api_key = settings.FIREBASE_API_KEY
 
-    async def create_user(self, user_data: UserCreate) -> dict:
+    async def create_user(self, user_data: UserCreate) -> FirebaseAuthResponse:
         try:
-            # Criar usuário no Firebase Auth
-            user = auth.create_user(
-                email=user_data.email,
-                password=user_data.password,
-                display_name=user_data.full_name
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={self.api_key}"
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json={
+                    "email": user_data.email,
+                    "password": user_data.password,
+                    "returnSecureToken": True
+                })
+                
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=response.json().get("error", {}).get("message")
+                    )
+
+                auth_data = FirebaseAuthResponse(**response.json())
+
+                await self.update_user_profile(auth_data.localId, user_data.full_name)
+
+                await self.firebase.set_document('users', auth_data.localId, {
+                    'email': user_data.email,
+                    'full_name': user_data.full_name,
+                    'created_at': self.firebase.timestamp(),
+                    'updated_at': self.firebase.timestamp()
+                })
+
+                return auth_data
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
             )
 
-            # Criar documento do usuário no Firestore
-            await self.firebase.db.collection('users').document(user.uid).set({
-                'email': user_data.email,
-                'full_name': user_data.full_name,
-                'photo_url': user.photo_url,
-                'created_at': self.firebase.timestamp(),
-                'updated_at': self.firebase.timestamp()
-            })
+    async def login_user(self, credentials: UserLogin) -> FirebaseAuthResponse:
+        try:
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={self.api_key}"
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json={
+                    "email": credentials.email,
+                    "password": credentials.password,
+                    "returnSecureToken": True
+                })
+                
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=response.json().get("error", {}).get("message")
+                    )
 
-            # Gerar token personalizado
-            token = await self.create_custom_token(user.uid)
+                return FirebaseAuthResponse(**response.json())
 
-            return {
-                'access_token': token,
-                'token_type': 'bearer',
-                'user_id': user.uid
-            }
-
-        except auth.EmailAlreadyExistsError:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e)
+            )
+
+    async def update_user_profile(self, user_id: str, display_name: str) -> None:
+        try:
+            auth.update_user(
+                user_id,
+                display_name=display_name
             )
         except Exception as e:
             raise HTTPException(
@@ -46,44 +81,9 @@ class AuthService:
                 detail=str(e)
             )
 
-    async def login_user(self, credentials: UserLogin) -> dict:
+    async def verify_id_token(self, id_token: str) -> dict:
         try:
-            # Verificar credenciais no Firebase Auth
-            user = auth.get_user_by_email(credentials.email)
-            
-            # Gerar token personalizado
-            token = await self.create_custom_token(user.uid)
-
-            return {
-                'access_token': token,
-                'token_type': 'bearer',
-                'user_id': user.uid
-            }
-
-        except auth.UserNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=str(e)
-            )
-
-    async def create_custom_token(self, user_id: str) -> str:
-        try:
-            return auth.create_custom_token(user_id).decode('utf-8')
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error creating custom token: {str(e)}"
-            )
-
-    async def verify_token(self, token: str) -> dict:
-        try:
-            decoded_token = auth.verify_id_token(token)
-            return decoded_token
+            return auth.verify_id_token(id_token)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -92,14 +92,21 @@ class AuthService:
 
     async def reset_password(self, email: str) -> dict:
         try:
-            reset_link = auth.generate_password_reset_link(email)
-            # Aqui você poderia enviar o email com o link
-            return {"message": "Password reset link sent successfully"}
-        except auth.UserNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={self.api_key}"
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json={
+                    "requestType": "PASSWORD_RESET",
+                    "email": email
+                })
+                
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=response.json().get("error", {}).get("message")
+                    )
+
+                return {"message": "Password reset email sent successfully"}
+
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

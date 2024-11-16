@@ -7,7 +7,7 @@ from app.core.config.firebase import get_firebase_app, get_firestore_client
 class FirebaseService:
     def __init__(self):
         try:
-            get_firebase_app()  # Ensure Firebase is initialized
+            get_firebase_app()
             self.db: Client = get_firestore_client()
             self.auth = auth
         except Exception as e:
@@ -64,24 +64,45 @@ class FirebaseService:
                 detail=f"Failed to delete document: {str(e)}"
             )
 
-    async def query_collection(self, collection: str, filters: list = None, order_by: tuple = None, limit: int = None):
-        """Query a collection with filters"""
+    async def query_collection(
+        self,
+        collection: str,
+        filters: list = None,
+        order_by: tuple = None,
+        limit: int = None,
+        offset: int = 0 
+    ):
+        """Query a collection with filters and pagination"""
         try:
             query = self.db.collection(collection)
             
             if filters:
-                for field, op, value in filters:
-                    query = query.where(field, op, value)
+                for filter_item in filters:
+                    if filter_item[0] == 'or':
+                        or_conditions = filter_item[1]
+                        or_queries = []
+                        for condition in or_conditions:
+                            or_query = query.where(condition[0], condition[1], condition[2])
+                            or_queries.append(or_query)
+                    else:
+                        query = query.where(filter_item[0], filter_item[1], filter_item[2])
             
             if order_by:
                 field, direction = order_by
                 query = query.order_by(field, direction=direction)
             
+            if offset > 0:
+                offset_query = query.limit(offset).get()
+                last_doc = list(offset_query)[-1] if offset_query else None
+                if last_doc:
+                    query = query.start_after(last_doc)
+            
             if limit:
                 query = query.limit(limit)
             
             docs = query.stream()
-            return [doc.to_dict() for doc in docs]
+            return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+
         except Exception as e:
             raise HTTPException(
                 status_code=500,
