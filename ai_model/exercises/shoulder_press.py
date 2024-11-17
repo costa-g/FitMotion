@@ -1,11 +1,31 @@
-from utils import calculate_angle, check_symmetry, check_stability, calculate_angular_velocity, is_within_amplitude, calculate_distance
+from utils import (
+    calculate_angle, check_symmetry, check_stability, 
+    calculate_angular_velocity, is_within_amplitude, calculate_distance
+)
 import mediapipe as mp
 import time
 
-def analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles=None, prev_time=None):
+# Estados do exercício
+INITIAL_POSITION = "Posição Inicial"
+ELEVATION_PHASE = "Movimento de Elevação"
+DESCENT_PHASE = "Descida Controlada"
+COMPLETED_REPETITION = "Repetição Completa"
+
+# Variáveis de progresso e motivação
+total_repetitions = 0
+last_rep_completed = False
+
+# Configurações de tempo e limites
+MIN_REP_DURATION = 1.5  # Tempo mínimo em segundos para uma repetição ser considerada válida
+previous_time = time.time()
+
+def analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles=None, prev_time=None, phase=INITIAL_POSITION):
     """
-    Analisa a postura do exercício de Desenvolvimento de Ombro aplicando vários critérios.
+    Analisa o exercício de Desenvolvimento de Ombro em etapas com feedback para cada fase do movimento.
+    Inclui progressão, motivação, ajuste postural, indicadores visuais e histórico de repetições.
     """
+    global total_repetitions, last_rep_completed, previous_time
+
     if prev_angles is None:
         prev_angles = {}
     if prev_time is None:
@@ -18,7 +38,6 @@ def analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles=Non
     left_hip = landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP]
     right_hip = landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_HIP]
     right_shoulder = landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER]
-    head = landmarks.landmark[mp.solutions.pose.PoseLandmark.NOSE]
 
     # Ângulos articulares
     elbow_angle = calculate_angle(left_shoulder, left_elbow, left_wrist, frame_width, frame_height)
@@ -32,40 +51,59 @@ def analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles=Non
     time_elapsed = current_time - prev_time
     angular_velocity = calculate_angular_velocity(prev_angles.get("elbow_angle", elbow_angle), elbow_angle, time_elapsed)
 
-    # Distância relativa entre ombro e cotovelo para verificar extensão
-    shoulder_elbow_distance = calculate_distance(left_shoulder, left_elbow, frame_width, frame_height)
-
-    # Análise de amplitude de movimento
-    full_range_reached = is_within_amplitude(elbow_angle, 160, 180)
-
-    # Progressão do exercício (início, meio e fim)
-    if elbow_angle < 90:
-        phase = "Início"
-    elif 90 <= elbow_angle < 160:
-        phase = "Meio"
-    else:
-        phase = "Fim"
-
-    # Feedback com base nos critérios
-    if not stable:
-        feedback = "Mantenha o tronco reto. Evite inclinar-se para frente ou para trás."
-    elif not symmetrical:
-        feedback = "Verifique o alinhamento dos ombros. Mantenha ambos os ombros alinhados."
-    elif elbow_angle < 90:
-        feedback = "Desça os pesos até a altura dos ombros para começar o movimento."
-    elif 90 <= elbow_angle < 160:
-        if shoulder_angle < 70:
-            feedback = "Mantenha os cotovelos próximos ao tronco ao levantar os pesos."
-        elif angular_velocity > 10:
-            feedback = "Movimento muito rápido. Execute o exercício com mais controle."
+    # Feedback e ajustes para fases
+    feedback = ""
+    if phase == INITIAL_POSITION:
+        if elbow_angle < 100 and 85 <= shoulder_angle <= 95 and stable:
+            feedback = "Posição inicial correta. Prepare-se para a elevação."
+            phase = ELEVATION_PHASE
+            last_rep_completed = False
         else:
-            feedback = "Continue levantando os pesos de forma controlada e alinhada."
-    elif elbow_angle >= 160 and full_range_reached:
-        feedback = "Braços totalmente estendidos acima da cabeça. Excelente!"
-    else:
-        feedback = "Verifique a posição e refaça o movimento para um desenvolvimento de ombro eficaz."
+            feedback = "Ajuste para a posição inicial: cotovelos a 90 graus e alinhados com os ombros."
 
-    # Retorna feedback e informações de análise detalhada como um dicionário
+    elif phase == ELEVATION_PHASE:
+        if 160 <= elbow_angle <= 180 and angular_velocity < 10:
+            feedback = "Elevação completa! Agora, desça os halteres de forma controlada."
+            phase = DESCENT_PHASE
+        elif angular_velocity > 15:
+            feedback = "Movimento muito rápido. Controle a elevação."
+        elif elbow_angle < 160:
+            feedback = f"Continue a elevação de forma controlada. Faltam {180 - elbow_angle:.1f} graus."
+        else:
+            feedback = "Mantenha a postura e controle o ritmo."
+
+    elif phase == DESCENT_PHASE:
+        if elbow_angle < 100 and 85 <= shoulder_angle <= 95 and stable:
+            if not last_rep_completed:
+                rep_duration = time.time() - previous_time
+                if rep_duration >= MIN_REP_DURATION:
+                    total_repetitions += 1
+                    last_rep_completed = True
+                    previous_time = time.time()
+                    feedback = f"Repetição {total_repetitions} completa. Excelente! Volte à posição inicial."
+                else:
+                    feedback = "Repetição rápida demais. Desça lentamente para maior controle."
+            phase = INITIAL_POSITION
+        elif angular_velocity > 15:
+            feedback = "Movimento muito rápido. Desça os pesos lentamente."
+        else:
+            feedback = "Desça de forma lenta e controlada, mantendo o alinhamento dos cotovelos com os ombros."
+
+    elif phase == COMPLETED_REPETITION:
+        feedback = "Repetição completa. Volte à posição inicial para iniciar a próxima repetição."
+        phase = INITIAL_POSITION
+
+    # Verificações adicionais de alinhamento e estabilidade
+    if not stable:
+        feedback += " | Mantenha o tronco estável e evite inclinar para frente ou para trás."
+    elif not symmetrical:
+        feedback += " | Ajuste o alinhamento dos ombros para garantir simetria."
+
+    # Indicadores visuais para motivação
+    if phase == COMPLETED_REPETITION and total_repetitions > 0:
+        feedback += f" | Excelente trabalho! Total de repetições: {total_repetitions}"
+
+    # Retorna feedback e informações de análise detalhada, incluindo a fase atual e repetições
     return {
         "feedback": feedback,
         "phase": phase,
@@ -75,6 +113,6 @@ def analyze_shoulder_press(landmarks, frame_width, frame_height, prev_angles=Non
         "symmetry": symmetrical,
         "stability": stable,
         "angular_velocity": angular_velocity,
-        "shoulder_elbow_distance": shoulder_elbow_distance,
+        "total_repetitions": total_repetitions,
         "time": current_time
     }

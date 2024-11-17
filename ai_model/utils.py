@@ -51,7 +51,7 @@ def check_symmetry(left_point, right_point, frame_width=None, frame_height=None,
 
     return abs(left_x - right_x) <= tolerance * frame_width
 
-def check_stability(torso_angle, lower_bound=80, upper_bound=100):
+def check_stability(torso_angle, lower_bound=85, upper_bound=95):
     """
     Verifica se o ângulo do tronco está dentro dos limites aceitáveis (posição reta).
     """
@@ -71,25 +71,73 @@ def is_within_amplitude(angle, min_angle, max_angle):
     """
     return min_angle <= angle <= max_angle
 
+def calculate_center_of_mass(landmarks, relevant_points, frame_width=None, frame_height=None):
+    """
+    Calcula o centro de massa aproximado com base nos pontos relevantes.
+    """
+    x_sum, y_sum = 0, 0
+    for point in relevant_points:
+        x, y = (landmarks[point].x, landmarks[point].y)
+        if frame_width and frame_height:
+            x, y = normalize_coordinates(landmarks[point], frame_width, frame_height)
+        x_sum += x
+        y_sum += y
+    count = len(relevant_points)
+    return x_sum / count, y_sum / count
+
+def check_head_alignment(head, torso, tolerance=0.1):
+    """
+    Verifica o alinhamento da cabeça em relação ao torso.
+    """
+    head_x, head_y = head.x, head.y
+    torso_x, torso_y = torso.x, torso.y
+    return abs(head_x - torso_x) <= tolerance and abs(head_y - torso_y) <= tolerance
+
+def calculate_inclination(torso, hips, frame_width=None, frame_height=None):
+    """
+    Calcula a inclinação do torso em relação à linha dos quadris.
+    """
+    if frame_width and frame_height:
+        torso_x, torso_y = normalize_coordinates(torso, frame_width, frame_height)
+        hips_x, hips_y = normalize_coordinates(hips, frame_width, frame_height)
+    else:
+        torso_x, torso_y = torso.x, torso.y
+        hips_x, hips_y = hips.x, hips.y
+
+    # Inclinação em relação ao eixo vertical
+    angle = math.degrees(math.atan2(torso_y - hips_y, torso_x - hips_x))
+    return abs(angle)
+
 def analyze_posture(landmarks, frame_width, frame_height, prev_angles=None, prev_time=None):
     """
-    Realiza uma análise detalhada da postura, incluindo ângulos, simetria, estabilidade, e velocidade angular.
+    Realiza uma análise detalhada da postura, incluindo ângulos, simetria, estabilidade, 
+    velocidade angular, alinhamento da cabeça e inclinação do torso.
     """
-    # Exemplo de cálculo de ângulos e distâncias
+    if prev_angles is None:
+        prev_angles = {}
+
+    # Cálculos de ângulos e distâncias
     shoulder_angle = calculate_angle(landmarks['left_hip'], landmarks['left_shoulder'], landmarks['left_elbow'], frame_width, frame_height)
     elbow_angle = calculate_angle(landmarks['left_shoulder'], landmarks['left_elbow'], landmarks['left_wrist'], frame_width, frame_height)
     torso_angle = calculate_angle(landmarks['left_hip'], landmarks['left_shoulder'], landmarks['right_hip'], frame_width, frame_height)
-
-    # Verificação de simetria
+    head_torso_alignment = calculate_distance(landmarks['left_shoulder'], landmarks['right_shoulder'], frame_width, frame_height)
+    
+    # Verificação de simetria, estabilidade e alinhamento da cabeça
     symmetrical = check_symmetry(landmarks['left_shoulder'], landmarks['right_shoulder'], frame_width, frame_height)
-
-    # Verificação de estabilidade do tronco
     stable = check_stability(torso_angle)
+    head_aligned = check_head_alignment(landmarks['head'], landmarks['torso'])
 
     # Cálculo de velocidade angular
     current_time = time.time()
     time_elapsed = current_time - prev_time if prev_time else 0
     angular_velocity = calculate_angular_velocity(prev_angles.get('elbow_angle', elbow_angle), elbow_angle, time_elapsed)
+
+    # Cálculo de inclinação do torso
+    torso_inclination = calculate_inclination(landmarks['torso'], landmarks['hips'], frame_width, frame_height)
+
+    # Cálculo de centro de massa
+    relevant_points = ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']
+    center_of_mass = calculate_center_of_mass(landmarks, relevant_points, frame_width, frame_height)
 
     # Resultados de análise
     return {
@@ -99,5 +147,9 @@ def analyze_posture(landmarks, frame_width, frame_height, prev_angles=None, prev
         "symmetry": symmetrical,
         "stability": stable,
         "angular_velocity": angular_velocity,
+        "head_torso_alignment": head_torso_alignment,
+        "center_of_mass": center_of_mass,
+        "torso_inclination": torso_inclination,
+        "head_aligned": head_aligned,
         "time": current_time
     }
