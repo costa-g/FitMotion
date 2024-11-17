@@ -1,12 +1,29 @@
+# Framework principal e utilitários
 fastapi==0.109.2
 uvicorn==0.27.1
-firebase-admin==6.4.0
-python-dotenv==1.0.1
 pydantic==2.6.1
 pydantic-settings==2.1.0
+python-multipart==0.0.9
+python-dotenv==1.0.1
+
+# Firebase
+firebase-admin==6.4.0
+
+# Processamento de IA/ML
+tensorflow  # Para análise de movimentos
+mediapipe   # Para detecção de pose
+numpy       # Para cálculos numéricos
+
+# HTTP e autenticação
+httpx==0.26.0       # Para requisições HTTP assíncronas
+python-jose==3.3.0  # Para JWT
+passlib==1.7.4      # Para hash de senhas
+bcrypt==4.1.2       # Para criptografia
+
+# Testes
 pytest==8.0.0
 httpx==0.26.0
-python-multipart==0.0.9
-python-jose==3.3.0
-passlib==1.7.4
-bcrypt==4.1.2
+
+# Extras (opcionais mas recomendados)
+opencv-python==4.9.0.80  # Para processamento de imagem
+pillow==10.2.0          # Para manipulação de imagens

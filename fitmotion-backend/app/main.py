@@ -2,7 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config.settings import settings
 from app.core.config.firebase import initialize_firebase
-from app.api.v1 import auth, exercises, workouts
+from app.api.v1 import (
+    auth, 
+    exercises, 
+    workouts,
+    movement_analysis,
+    workout_sessions,
+    achievements,
+    user_profile
+)
 
 def create_application() -> FastAPI:
     initialize_firebase()
@@ -23,18 +31,13 @@ def create_application() -> FastAPI:
     )
 
     # Include routers
-    application.include_router(
-        auth.router,
-        prefix=settings.API_V1_STR
-    )
-    application.include_router(
-        exercises.router,
-        prefix=settings.API_V1_STR
-    )
-    application.include_router(
-        workouts.router,
-        prefix=settings.API_V1_STR
-    )
+    application.include_router(auth.router, prefix=settings.API_V1_STR)
+    application.include_router(exercises.router, prefix=settings.API_V1_STR)
+    application.include_router(workouts.router, prefix=settings.API_V1_STR)
+    application.include_router(movement_analysis.router, prefix=settings.API_V1_STR)
+    application.include_router(workout_sessions.router, prefix=settings.API_V1_STR)
+    application.include_router(achievements.router, prefix=settings.API_V1_STR)
+    application.include_router(user_profile.router, prefix=settings.API_V1_STR)
 
     return application
 
