@@ -8,8 +8,7 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.SplashTheme)
-        super.onCreate(savedInstanceState)
+        super.onCreate(null)
     }
 
     override fun getMainComponentName(): String = "FitMotion"
