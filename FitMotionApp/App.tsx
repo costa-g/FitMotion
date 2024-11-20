@@ -1,6 +1,12 @@
 import React from 'react';
-import { SafeAreaView, StatusBar, Text, useColorScheme, View } from 'react-native';
-import { Colors } from 'react-native/Libraries/NewAppScreen';
+import {
+  SafeAreaView,
+  StatusBar,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
 
 function App(): JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
@@ -23,16 +29,14 @@ function App(): JSX.Element {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
-        }}
-      >
+        }}>
         <Text
           // eslint-disable-next-line react-native/no-inline-styles
           style={{
             fontSize: 24,
             color: isDarkMode ? Colors.lighter : Colors.darker,
             marginBottom: 10,
-          }}
-        >
+          }}>
           FitMotion
         </Text>
         <Text
@@ -41,8 +45,7 @@ function App(): JSX.Element {
             fontSize: 16,
             color: isDarkMode ? Colors.lighter : Colors.darker,
             textAlign: 'center',
-          }}
-        >
+          }}>
           Seu assistente de treino inteligente
         </Text>
       </View>
